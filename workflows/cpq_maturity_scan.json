@@ -1,0 +1,17 @@
+{
+  "name": "CPQ_Maturity_scan",
+  "nodes": [
+    {"parameters": {}, "id": "df427281-e4b7-4024-bad4-6b1219f577f0", "name": "Execute Workflow Trigger", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1, "position": [200, 300]},
+    {"parameters": {"jsCode": "const body = $json;\nif (body.benefit_type !== 'CPQ_Maturity_scan') return [{ json: { success: false, error_code: 'INVALID_INPUT', message: 'benefit_type must be CPQ_Maturity_scan' } }];\nconst configAutomation = Number(body.answers.configuration_automation ?? body.answers.question_1 ?? 0);\nconst pricingGovernance = Number(body.answers.pricing_governance ?? body.answers.question_2 ?? 0);\nconst engineeringCollab = Number(body.answers.engineering_collaboration ?? body.answers.question_3 ?? 0);\nconst approvals = Number(body.answers.approval_workflows ?? body.answers.question_4 ?? 0);\nif (![configAutomation, pricingGovernance, engineeringCollab, approvals].every(Number.isFinite)) {\n return [{ json: { success: false, error_code: 'INVALID_INPUT', message: 'All maturity signals must be numeric' } }];\n}\nreturn [{ json: { ...body, maturity_inputs: { configAutomation, pricingGovernance, engineeringCollab, approvals } } }];"}, "id": "02ad95b8-a8c8-41f3-93e7-6f71675cb6f8", "name": "Validate Input", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [450, 300]},
+    {"parameters": {"jsCode": "if ($json.success === false) return [{ json: $json }];\nconst { configAutomation, pricingGovernance, engineeringCollab, approvals } = $json.maturity_inputs;\nconst maturityRaw = (configAutomation + pricingGovernance + engineeringCollab + approvals) / 4;\nconst maturity_level = Math.max(1, Math.min(5, Math.round(maturityRaw / 20)));\nconst score = maturity_level * 20;\nconst priorities = ['Data quality baselining', 'Rules and pricing governance', 'Cross-functional workflow automation'];\nreturn [{ json: { ...$json, maturity_level, score, priorities } }];"}, "id": "96b7f10f-c9da-4acf-9bb3-54716f47c700", "name": "Compute Score", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [700, 300]},
+    {"parameters": {"jsCode": "if ($json.success === false) return [{ json: $json }];\nreturn [{\n  json: {\n    success: true,\n    benefit_type: 'CPQ_Maturity_scan',\n    score: $json.score,\n    summary: `CPQ maturity level is ${$json.maturity_level}/5. Focus on ${$json.priorities[0].toLowerCase()}.`,\n    recommendations: $json.priorities,\n    meta: {\n      execution_id: $execution.id,\n      version: '1.0.0',\n      benefit_version: '2026-Q1',\n      maturity_level: $json.maturity_level,\n      improvement_priority: $json.priorities[0]\n    }\n  }\n}];"}, "id": "8f241f3b-16b6-40d1-8f40-fef988769b3b", "name": "Generate Summary", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [950, 300]}
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {"main": [[{"node": "Validate Input", "type": "main", "index": 0}]]},
+    "Validate Input": {"main": [[{"node": "Compute Score", "type": "main", "index": 0}]]},
+    "Compute Score": {"main": [[{"node": "Generate Summary", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "8fd07184-b587-406f-a309-699e1ddf6af1"
+}

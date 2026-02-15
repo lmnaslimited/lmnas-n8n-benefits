@@ -1,0 +1,51 @@
+{
+  "name": "Pipeline_audit",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "97f77da0-c967-4bb1-a72a-d2ec36f44207",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json;\nif (body.benefit_type !== 'Pipeline_audit') {\n  return [{ json: { success: false, error_code: 'INVALID_INPUT', message: 'benefit_type must be Pipeline_audit' } }];\n}\nconst leadLeakage = Number(body.answers.lead_leakage ?? body.answers.question_1 ?? 0);\nconst conversionGap = Number(body.answers.stage_conversion_gaps ?? body.answers.question_2 ?? 0);\nconst dealAging = Number(body.answers.deal_aging ?? body.answers.question_3 ?? 0);\nif (![leadLeakage, conversionGap, dealAging].every(Number.isFinite)) {\n  return [{ json: { success: false, error_code: 'INVALID_INPUT', message: 'lead leakage, stage conversion gaps and deal aging must be numeric' } }];\n}\nreturn [{ json: { ...body, metrics: { leadLeakage, conversionGap, dealAging } } }];"
+      },
+      "id": "a4b8c723-2d08-48f2-95e8-7ea0a4f7ecce",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "if ($json.success === false) return [{ json: $json }];\nconst { leadLeakage, conversionGap, dealAging } = $json.metrics;\nconst score = Math.max(0, Math.min(100, Math.round(100 - (leadLeakage * 0.5 + conversionGap * 0.3 + dealAging * 0.2))));\nconst stages = ['Discovery', 'Qualification', 'Proposal', 'Negotiation', 'Close'];\nconst values = [leadLeakage, conversionGap, dealAging, conversionGap + 5, leadLeakage - 5];\nconst bottleneck_stage = stages[values.indexOf(Math.max(...values))];\nreturn [{ json: { ...$json, score, bottleneck_stage } }];"
+      },
+      "id": "af5e8089-830e-4745-a996-3a55eb6e5d3b",
+      "name": "Compute Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "if ($json.success === false) return [{ json: $json }];\nconst recommendation_list = [\n  'Implement stage-entry criteria for every opportunity.',\n  'Set SLA for follow-up and stale deal remediation.',\n  'Add weekly leakage and conversion dashboard reviews.'\n];\nreturn [{\n  json: {\n    success: true,\n    benefit_type: 'Pipeline_audit',\n    score: $json.score,\n    summary: `Pipeline health score is ${$json.score}. Bottleneck stage: ${$json.bottleneck_stage}.`,\n    recommendations: recommendation_list,\n    meta: {\n      execution_id: $execution.id,\n      version: '1.0.0',\n      benefit_version: '2026-Q1',\n      pipeline_health_score: $json.score,\n      bottleneck_stage: $json.bottleneck_stage\n    }\n  }\n}];"
+      },
+      "id": "7f4fa4ef-53dc-42ae-a33f-b59d9e1f5e53",
+      "name": "Generate Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [950, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {"main": [[{"node": "Validate Input", "type": "main", "index": 0}]]},
+    "Validate Input": {"main": [[{"node": "Compute Score", "type": "main", "index": 0}]]},
+    "Compute Score": {"main": [[{"node": "Generate Summary", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "496af928-998b-49ce-b8ac-f16daab3ab8f"
+}

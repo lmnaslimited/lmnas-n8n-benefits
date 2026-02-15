@@ -1,0 +1,300 @@
+{
+  "name": "Benefit_Engine_Router",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "benefit-engine",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "b5d2fc9d-ae9f-477b-946d-3af8fb366b79",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        380
+      ],
+      "webhookId": "benefit-engine-public"
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = $json.headers ?? $headers;\nconst provided = headers['x-api-key'] || headers['X-API-KEY'] || '';\nif (provided !== $env.N8N_API_KEY) {\n  return [{ json: { success: false, error_code: 'UNAUTHORIZED', message: 'Invalid API key' } }];\n}\nconst payload = $json.body ?? $json;\nconst required = ['benefit_type', 'user_context', 'answers'];\nfor (const key of required) {\n  if (payload[key] === undefined || payload[key] === null) {\n    return [{ json: { success: false, error_code: 'INVALID_INPUT', message: `Missing ${key}` } }];\n  }\n}\nreturn [{ json: payload }];"
+      },
+      "id": "87c7dd73-bdce-43d2-9e5f-b10d1ca4cbf9",
+      "name": "Validate API Key + Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.success === false}}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "e2d22342-166f-4af6-8ece-7830fe1f53dd",
+      "name": "Is Error",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        700,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "dataPropertyName": "={{$json[\"benefit_type\"]}}",
+        "rules": {
+          "values": [
+            {
+              "operation": "equal",
+              "value": "ROI_Calculator"
+            },
+            {
+              "operation": "equal",
+              "value": "Pipeline_audit"
+            },
+            {
+              "operation": "equal",
+              "value": "CPQ_Maturity_scan"
+            },
+            {
+              "operation": "equal",
+              "value": "Sales_cycle_analyzer"
+            },
+            {
+              "operation": "equal",
+              "value": "Tender_complexity_score"
+            }
+          ]
+        }
+      },
+      "id": "634bc7d7-d03d-4a29-a14f-1e4d9f4e82da",
+      "name": "Route by benefit_type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        930,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ROI_Calculator"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "72a55854-4f90-44c2-8f4d-c31913e2afce",
+      "name": "Run ROI Workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1200, 180]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Pipeline_audit"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "9cba5ef3-57f7-4b1b-b337-60ed6a11d1ef",
+      "name": "Run Pipeline Workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1200, 350]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "CPQ_Maturity_scan"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "02054eb0-a29b-4993-b96f-ab15488f3187",
+      "name": "Run CPQ Workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1200, 520]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Sales_cycle_analyzer"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "dadf14ea-473d-4f7e-867f-2512405d915d",
+      "name": "Run Sales Cycle Workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1200, 690]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Tender_complexity_score"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "0d60e1cc-c6a5-4143-b0e2-da4c6f2db57a",
+      "name": "Run Tender Workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1200, 860]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    success: false,\n    error_code: 'INVALID_BENEFIT_TYPE',\n    message: `Unsupported benefit_type: ${$json.benefit_type || 'unknown'}`\n  }\n}];"
+      },
+      "id": "f85e5a08-c05d-4300-acc5-370f24fed7df",
+      "name": "Unsupported benefit response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 1040]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "78cd0f14-a3ff-4fe6-9634-9994d1f4d7c1",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1500, 560]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate API Key + Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate API Key + Payload": {
+      "main": [
+        [
+          {
+            "node": "Is Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Error": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Route by benefit_type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by benefit_type": {
+      "main": [
+        [
+          {
+            "node": "Run ROI Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Pipeline Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run CPQ Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Sales Cycle Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Tender Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unsupported benefit response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run ROI Workflow": {"main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]},
+    "Run Pipeline Workflow": {"main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]},
+    "Run CPQ Workflow": {"main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]},
+    "Run Sales Cycle Workflow": {"main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]},
+    "Run Tender Workflow": {"main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]},
+    "Unsupported benefit response": {"main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "4308f173-4098-45d0-83d5-88e7f6badbda"
+}
