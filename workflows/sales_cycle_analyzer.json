@@ -1,15 +1,91 @@
 {
   "name": "Sales_cycle_analyzer",
   "nodes": [
-    {"parameters": {}, "id": "031cf5f7-22c9-4d66-86d1-4bbe590de02b", "name": "Execute Workflow Trigger", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1, "position": [200, 300]},
-    {"parameters": {"jsCode": "const body = $json;\nif (body.benefit_type !== 'Sales_cycle_analyzer') return [{ json: { success: false, error_code: 'INVALID_INPUT', message: 'benefit_type must be Sales_cycle_analyzer' } }];\nconst averageCycleLength = Number(body.answers.average_cycle_length ?? body.answers.question_1 ?? 0);\nconst engineeringDelay = Number(body.answers.engineering_delay ?? body.answers.question_2 ?? 0);\nconst approvalTurnaround = Number(body.answers.approval_turnaround ?? body.answers.question_3 ?? 0);\nif (![averageCycleLength, engineeringDelay, approvalTurnaround].every(Number.isFinite)) {\n  return [{ json: { success: false, error_code: 'INVALID_INPUT', message: 'Cycle signals must be numeric' } }];\n}\nreturn [{ json: { ...body, cycle_inputs: { averageCycleLength, engineeringDelay, approvalTurnaround } } }];"}, "id": "6b145645-e7da-4e76-9706-57e59c5e6507", "name": "Validate Input", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [450, 300]},
-    {"parameters": {"jsCode": "if ($json.success === false) return [{ json: $json }];\nconst { averageCycleLength, engineeringDelay, approvalTurnaround } = $json.cycle_inputs;\nconst cycle_efficiency_score = Math.max(0, Math.min(100, Math.round(100 - (averageCycleLength * 0.5 + engineeringDelay * 1.2 + approvalTurnaround * 0.8))));\nconst delayValues = { Engineering: engineeringDelay, Approvals: approvalTurnaround, Sales_Process: averageCycleLength / 2 };\nconst delay_source = Object.keys(delayValues).reduce((a, b) => delayValues[a] > delayValues[b] ? a : b);\nreturn [{ json: { ...$json, score: cycle_efficiency_score, delay_source } }];"}, "id": "346f9e32-f0f6-44fe-86be-d80942bf9854", "name": "Compute Score", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [700, 300]},
-    {"parameters": {"jsCode": "if ($json.success === false) return [{ json: $json }];\nreturn [{\n  json: {\n    success: true,\n    benefit_type: 'Sales_cycle_analyzer',\n    score: $json.score,\n    summary: `Cycle efficiency score is ${$json.score}. Primary delay source: ${$json.delay_source}.`,\n    recommendations: [\n      'Introduce pre-approved configuration bundles for common deals.',\n      'Define engineering response SLAs by opportunity tier.',\n      'Automate approval escalations above threshold values.'\n    ],\n    meta: {\n      execution_id: $execution.id,\n      version: '1.0.0',\n      benefit_version: '2026-Q1',\n      cycle_efficiency_score: $json.score,\n      delay_source: $json.delay_source\n    }\n  }\n}];"}, "id": "26befdc2-9a98-4d49-8aa5-a9a8ecb83805", "name": "Generate Summary", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [950, 300]}
+    {
+      "parameters": {},
+      "id": "031cf5f7-22c9-4d66-86d1-4bbe590de02b",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $json;\nconst input = payload.input ?? {};\nif (input.benefitSlug !== 'sales-cycle-analyzer') {\n  return [{ json: {\n    followup_required: false,\n    followupQuestions: [],\n    result: {\n      score: 0,\n      summary: `benefitSlug must be sales-cycle-analyzer`,\n      recommendation: 'Send request to the matching benefit workflow.'\n    }\n  } }];\n}\nconst answers = Array.isArray(input.answers) ? input.answers : [];\nconst answersMap = answers.reduce((acc, item) => {\n  if (item && item.questionId) acc[item.questionId] = item.value;\n  return acc;\n}, {});\nconst stage = input.stage ?? 'standard_started';\nconst followup_required = stage !== 'standard_completed';\nconst followupQuestions = followup_required\n  ? [{\n      id: 'q1',\n      prompt: `Please provide one more detail for ${input.benefitSlug}: current baseline metric and target outcome.`\n    }]\n  : [];\nreturn [{\n  json: {\n    session: payload.session ?? {},\n    input,\n    prompts: payload.prompts ?? {},\n    answersMap,\n    followup_required,\n    followupQuestions\n  }\n}];"
+      },
+      "id": "6b145645-e7da-4e76-9706-57e59c5e6507",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "if ($json.followup_required) {\n  return [{ json: { ...$json, score: 0, ragContext: { reason: 'Waiting for follow-up answers' } } }];\n}\nconst answersMap = $json.answersMap ?? {};\nconst cycleDays = Number(answersMap.cycleDays ?? answersMap.quoteTurnaroundDays ?? 0);\nconst engineeringWaitDays = Number(answersMap.engineeringWaitDays ?? 0);\nconst approvalDays = Number(answersMap.approvalDays ?? 0);\nconst score = Math.max(0, Math.min(100, Math.round(100 - (cycleDays * 0.9 + engineeringWaitDays * 1.4 + approvalDays * 1.1))));\nreturn [{ json: { ...$json, ragContext: { cycleDays, engineeringWaitDays, approvalDays }, score } }];\n"
+      },
+      "id": "346f9e32-f0f6-44fe-86be-d80942bf9854",
+      "name": "Mock LLM RAG",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "if ($json.followup_required) {\n  return [{\n    json: {\n      followup_required: true,\n      followupQuestions: $json.followupQuestions,\n      result: {\n        score: 0,\n        summary: 'Additional input is required before final scoring.',\n        recommendation: 'Answer the follow-up question(s) and submit again.'\n      }\n    }\n  }];\n}\nconst systemPrompt = $json.prompts?.system ?? '';\nconst userPrompt = $json.prompts?.user ?? '';\nconst ragHint = (systemPrompt || userPrompt)\n  ? ' Mock LLM RAG grounded this response on provided prompts.'\n  : '';\nreturn [{\n  json: {\n    followup_required: false,\n    followupQuestions: [],\n    result: {\n      score: $json.score,\n      summary: 'Sales cycle delays are primarily caused by engineering response and approval loops.' + ragHint,\n      recommendation: 'Introduce SLA-backed engineering queues and automated approval routing.'\n    }\n  }\n}];"
+      },
+      "id": "26befdc2-9a98-4d49-8aa5-a9a8ecb83805",
+      "name": "Format Engine Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        950,
+        300
+      ]
+    }
   ],
   "connections": {
-    "Execute Workflow Trigger": {"main": [[{"node": "Validate Input", "type": "main", "index": 0}]]},
-    "Validate Input": {"main": [[{"node": "Compute Score", "type": "main", "index": 0}]]},
-    "Compute Score": {"main": [[{"node": "Generate Summary", "type": "main", "index": 0}]]}
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Mock LLM RAG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mock LLM RAG": {
+      "main": [
+        [
+          {
+            "node": "Format Engine Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "active": false,
   "settings": {},

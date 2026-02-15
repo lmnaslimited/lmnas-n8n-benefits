@@ -14,7 +14,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $json;\nconst required = ['benefit_type', 'user_context', 'answers'];\nfor (const key of required) {\n  if (body[key] === undefined || body[key] === null) {\n    return [{ json: { success: false, error_code: 'INVALID_INPUT', message: `Missing ${key}` } }];\n  }\n}\nif (body.benefit_type !== 'ROI_Calculator') {\n  return [{ json: { success: false, error_code: 'INVALID_INPUT', message: 'benefit_type must be ROI_Calculator' } }];\n}\nconst revenue = Number(body.user_context.annual_revenue);\nconst pipelineValue = Number(body.answers.pipeline_value ?? body.answers.question_1 ?? 0);\nconst effortHours = Number(body.answers.manual_effort_hours ?? body.answers.question_2 ?? 0);\nif (!Number.isFinite(revenue)) {\n  return [{ json: { success: false, error_code: 'INVALID_INPUT', message: 'Missing annual_revenue' } }];\n}\nif (!Number.isFinite(pipelineValue) || !Number.isFinite(effortHours)) {\n  return [{ json: { success: false, error_code: 'INVALID_INPUT', message: 'pipeline_value and manual_effort_hours must be numeric' } }];\n}\nreturn [{ json: { ...body, calc_inputs: { revenue, pipelineValue, effortHours } } }];"
+        "jsCode": "const payload = $json;\nconst input = payload.input ?? {};\nif (input.benefitSlug !== 'roi-calculator') {\n  return [{ json: {\n    followup_required: false,\n    followupQuestions: [],\n    result: {\n      score: 0,\n      summary: `benefitSlug must be roi-calculator`,\n      recommendation: 'Send request to the matching benefit workflow.'\n    }\n  } }];\n}\nconst answers = Array.isArray(input.answers) ? input.answers : [];\nconst answersMap = answers.reduce((acc, item) => {\n  if (item && item.questionId) acc[item.questionId] = item.value;\n  return acc;\n}, {});\nconst stage = input.stage ?? 'standard_started';\nconst followup_required = stage !== 'standard_completed';\nconst followupQuestions = followup_required\n  ? [{\n      id: 'q1',\n      prompt: `Please provide one more detail for ${input.benefitSlug}: current baseline metric and target outcome.`\n    }]\n  : [];\nreturn [{\n  json: {\n    session: payload.session ?? {},\n    input,\n    prompts: payload.prompts ?? {},\n    answersMap,\n    followup_required,\n    followupQuestions\n  }\n}];"
       },
       "id": "3f3ca4af-45b4-48d8-819f-3530c700f82d",
       "name": "Validate Input",
@@ -27,10 +27,10 @@
     },
     {
       "parameters": {
-        "jsCode": "if ($json.success === false) {\n  return [{ json: $json }];\n}\nconst { revenue, pipelineValue, effortHours } = $json.calc_inputs;\nconst rawScore = (revenue * 0.02) + (pipelineValue * 0.01) - (effortHours * 10);\nconst normalizedScore = Math.max(0, Math.min(100, Math.round(rawScore / 1000)));\nreturn [{\n  json: {\n    ...$json,\n    score: normalizedScore,\n    summary_seed: normalizedScore >= 75\n      ? 'high'\n      : normalizedScore >= 45\n        ? 'moderate'\n        : 'low'\n  }\n}];"
+        "jsCode": "if ($json.followup_required) {\n  return [{ json: { ...$json, score: 0, ragContext: { reason: 'Waiting for follow-up answers' } } }];\n}\nconst answersMap = $json.answersMap ?? {};\nconst annualRevenue = Number(answersMap.annualRevenue ?? 0);\nconst quoteTurnaroundDays = Number(answersMap.quoteTurnaroundDays ?? 0);\nconst winRate = Number(answersMap.winRate ?? 0);\nconst score = Math.max(0, Math.min(100, Math.round((annualRevenue / 2000) + (100 - quoteTurnaroundDays * 3) + (winRate * 1.5))));\nreturn [{ json: { ...$json, ragContext: { annualRevenue, quoteTurnaroundDays, winRate }, score } }];\n"
       },
       "id": "6cf49ad4-4c09-476f-bf45-ab8ef679f8aa",
-      "name": "Compute Score",
+      "name": "Mock LLM RAG",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -40,10 +40,10 @@
     },
     {
       "parameters": {
-        "jsCode": "if ($json.success === false) {\n  return [{ json: $json }];\n}\nconst summaryByBand = {\n  high: 'Your ROI potential is high. Prioritize automation for immediate measurable gains.',\n  moderate: 'Your ROI potential is moderate. Address current bottlenecks to increase impact.',\n  low: 'Current ROI potential is low. Start with quick wins and baseline performance tracking.'\n};\nconst recommendations = [\n  'Automate repetitive presales and quoting tasks.',\n  'Track proposal turnaround and engineer effort weekly.',\n  'Reinvest savings into high-conversion pipeline stages.'\n];\nreturn [{\n  json: {\n    success: true,\n    benefit_type: 'ROI_Calculator',\n    score: $json.score,\n    summary: summaryByBand[$json.summary_seed],\n    recommendations,\n    meta: {\n      execution_id: $execution.id,\n      version: '1.0.0',\n      benefit_version: '2026-Q1',\n      inputs: $json.calc_inputs\n    }\n  }\n}];"
+        "jsCode": "if ($json.followup_required) {\n  return [{\n    json: {\n      followup_required: true,\n      followupQuestions: $json.followupQuestions,\n      result: {\n        score: 0,\n        summary: 'Additional input is required before final scoring.',\n        recommendation: 'Answer the follow-up question(s) and submit again.'\n      }\n    }\n  }];\n}\nconst systemPrompt = $json.prompts?.system ?? '';\nconst userPrompt = $json.prompts?.user ?? '';\nconst ragHint = (systemPrompt || userPrompt)\n  ? ' Mock LLM RAG grounded this response on provided prompts.'\n  : '';\nreturn [{\n  json: {\n    followup_required: false,\n    followupQuestions: [],\n    result: {\n      score: $json.score,\n      summary: 'You can reduce quote cycle by 15% by automating quote orchestration.' + ragHint,\n      recommendation: 'Automate pricing approvals and create reusable quote templates.'\n    }\n  }\n}];"
       },
       "id": "f3c99717-ff9f-4f4c-b352-f4481e29d62a",
-      "name": "Generate Summary",
+      "name": "Format Engine Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -68,18 +68,18 @@
       "main": [
         [
           {
-            "node": "Compute Score",
+            "node": "Mock LLM RAG",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Compute Score": {
+    "Mock LLM RAG": {
       "main": [
         [
           {
-            "node": "Generate Summary",
+            "node": "Format Engine Response",
             "type": "main",
             "index": 0
           }

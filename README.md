@@ -1,107 +1,62 @@
 # lmnas-n8n-benefits
 
-n8n workflow package for a single public webhook that routes benefit assessments to sub-workflows and always returns a standardized JSON envelope.
+n8n workflow package for a single public webhook that routes benefit assessments to sub-workflows and always returns a strict JSON envelope for benefit engine responses.
 
 ## Included assets
 
 - `docker/docker-compose.yml` – local n8n runtime.
-- `.env.example` – required environment variables.
 - `workflows/benefit_router.json` – public webhook router (`POST /webhook/benefit-engine`).
-- `workflows/roi_calculator.json`
-- `workflows/pipeline_audit.json`
-- `workflows/cpq_maturity_scan.json`
-- `workflows/sales_cycle_analyzer.json`
-- `workflows/tender_complexity_score.json`
-
-## Supported `benefit_type`
-
-- `ROI_Calculator`
-- `Pipeline_audit`
-- `CPQ_Maturity_scan`
-- `Sales_cycle_analyzer`
-- `Tender_complexity_score`
+- Benefit workflows in `workflows/*.json` (ROI, Pipeline, CPQ, Sales Cycle, Tender Complexity).
 
 ## Input contract
 
 ```json
 {
-  "benefit_type": "ROI_Calculator",
-  "user_context": {
-    "company_name": "Acme",
-    "industry": "Manufacturing",
-    "annual_revenue": 12000000
+  "session": {
+    "sessionId": "af0dd49d-a480-475a-8081-ccae63cad870",
+    "anonymousId": "5e8739fc-acfd-4e1c-9190-0e703dc10200"
   },
-  "answers": {
-    "question_1": 350000,
-    "question_2": 40
+  "input": {
+    "benefitSlug": "roi-calculator",
+    "sessionId": "af0dd49d-a480-475a-8081-ccae63cad870",
+    "answers": [
+      { "questionId": "annualRevenue", "value": "10000" },
+      { "questionId": "quoteTurnaroundDays", "value": "10" },
+      { "questionId": "winRate", "value": "10" }
+    ],
+    "stage": "standard_completed"
+  },
+  "prompts": {
+    "system": "You are LMNAs benefit intelligence assistant.",
+    "user": "{...}"
   }
 }
 ```
 
-## Standard response contract
-
-Successful responses:
+## Strict response contract (all flows)
 
 ```json
 {
-  "success": true,
-  "benefit_type": "ROI_Calculator",
-  "score": 78,
-  "summary": "Your ROI potential is high...",
-  "recommendations": [],
-  "meta": {
-    "execution_id": "123",
-    "version": "1.0.0",
-    "benefit_version": "2026-Q1"
+  "followup_required": false,
+  "followupQuestions": [
+    { "id": "q1", "prompt": "Optional follow-up" }
+  ],
+  "result": {
+    "score": 78,
+    "summary": "You can reduce quote cycle by 15%.",
+    "recommendation": "Automate pricing approvals."
   }
 }
 ```
 
-Error responses:
+- `followup_required` is `true` when `input.stage !== "standard_completed"`.
+- Follow-up mode returns a placeholder result with score `0` and follow-up question(s).
+- Each benefit workflow now includes a `Mock LLM RAG` node that produces prompt-aware mocked recommendations.
 
-```json
-{
-  "success": false,
-  "error_code": "INVALID_INPUT",
-  "message": "Missing annual_revenue"
-}
-```
+## Supported `benefitSlug`
 
-## Run locally
-
-1. Copy env file:
-   ```bash
-   cp .env.example .env
-   ```
-2. Start n8n:
-   ```bash
-   docker compose -f docker/docker-compose.yml --env-file .env up -d
-   ```
-3. Import all workflow JSON files from `workflows/` in n8n UI.
-4. Activate `Benefit_Engine_Router` and sub-workflows.
-
-## Request example
-
-```bash
-curl -X POST "http://localhost:5678/webhook/benefit-engine" \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: supersecretkey" \
-  -d '{
-    "benefit_type": "ROI_Calculator",
-    "user_context": {
-      "company_name": "Acme",
-      "industry": "Manufacturing",
-      "annual_revenue": 12000000
-    },
-    "answers": {
-      "pipeline_value": 350000,
-      "manual_effort_hours": 40
-    }
-  }'
-```
-
-## Notes
-
-- API key is validated before routing.
-- Router does not respond immediately and waits for the selected sub-workflow completion.
-- Sub-workflows return structured validation errors and never surface stack traces.
+- `roi-calculator`
+- `pipeline-audit`
+- `cpq-maturity-scan`
+- `sales-cycle-analyzer`
+- `tender-complexity-score`

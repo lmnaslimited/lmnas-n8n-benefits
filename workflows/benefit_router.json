@@ -20,7 +20,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const headers = $json.headers ?? $headers;\nconst provided = headers['x-api-key'] || headers['X-API-KEY'] || '';\nif (provided !== $env.N8N_API_KEY) {\n  return [{ json: { success: false, error_code: 'UNAUTHORIZED', message: 'Invalid API key' } }];\n}\nconst payload = $json.body ?? $json;\nconst required = ['benefit_type', 'user_context', 'answers'];\nfor (const key of required) {\n  if (payload[key] === undefined || payload[key] === null) {\n    return [{ json: { success: false, error_code: 'INVALID_INPUT', message: `Missing ${key}` } }];\n  }\n}\nreturn [{ json: payload }];"
+        "jsCode": "const headers = $json.headers ?? $headers ?? {};\nconst provided = headers['x-api-key'] || headers['X-API-KEY'] || '';\nif (provided !== $env.N8N_API_KEY) {\n  return [{ json: {\n    followup_required: false,\n    followupQuestions: [],\n    result: {\n      score: 0,\n      summary: 'Invalid API key.',\n      recommendation: 'Provide a valid x-api-key header.'\n    }\n  } }];\n}\nconst payload = $json.body ?? $json;\nif (!payload.session || !payload.input) {\n  return [{ json: {\n    followup_required: false,\n    followupQuestions: [],\n    result: {\n      score: 0,\n      summary: 'Invalid payload: session and input are required.',\n      recommendation: 'Send payload with session + input blocks.'\n    }\n  } }];\n}\nif (!payload.input.benefitSlug) {\n  return [{ json: {\n    followup_required: false,\n    followupQuestions: [],\n    result: {\n      score: 0,\n      summary: 'Invalid payload: input.benefitSlug is required.',\n      recommendation: 'Provide a supported benefit slug in input.benefitSlug.'\n    }\n  } }];\n}\nif (!Array.isArray(payload.input.answers)) {\n  return [{ json: {\n    followup_required: false,\n    followupQuestions: [],\n    result: {\n      score: 0,\n      summary: 'Invalid payload: input.answers must be an array.',\n      recommendation: 'Send answers as [{ questionId, value }].'\n    }\n  } }];\n}\nreturn [{ json: payload }];"
       },
       "id": "87c7dd73-bdce-43d2-9e5f-b10d1ca4cbf9",
       "name": "Validate API Key + Payload",
@@ -36,7 +36,7 @@
         "conditions": {
           "boolean": [
             {
-              "value1": "={{$json.success === false}}",
+              "value1": "={{$json.result !== undefined}}",
               "operation": "isTrue"
             }
           ]
@@ -53,34 +53,34 @@
     },
     {
       "parameters": {
-        "dataPropertyName": "={{$json[\"benefit_type\"]}}",
+        "dataPropertyName": "={{$json[\"input\"][\"benefitSlug\"]}}",
         "rules": {
           "values": [
             {
               "operation": "equal",
-              "value": "ROI_Calculator"
+              "value": "roi-calculator"
             },
             {
               "operation": "equal",
-              "value": "Pipeline_audit"
+              "value": "pipeline-audit"
             },
             {
               "operation": "equal",
-              "value": "CPQ_Maturity_scan"
+              "value": "cpq-maturity-scan"
             },
             {
               "operation": "equal",
-              "value": "Sales_cycle_analyzer"
+              "value": "sales-cycle-analyzer"
             },
             {
               "operation": "equal",
-              "value": "Tender_complexity_score"
+              "value": "tender-complexity-score"
             }
           ]
         }
       },
       "id": "634bc7d7-d03d-4a29-a14f-1e4d9f4e82da",
-      "name": "Route by benefit_type",
+      "name": "Route by benefitSlug",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3,
       "position": [
@@ -103,7 +103,10 @@
       "name": "Run ROI Workflow",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1200, 180]
+      "position": [
+        1200,
+        180
+      ]
     },
     {
       "parameters": {
@@ -120,7 +123,10 @@
       "name": "Run Pipeline Workflow",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1200, 350]
+      "position": [
+        1200,
+        350
+      ]
     },
     {
       "parameters": {
@@ -137,7 +143,10 @@
       "name": "Run CPQ Workflow",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1200, 520]
+      "position": [
+        1200,
+        520
+      ]
     },
     {
       "parameters": {
@@ -154,7 +163,10 @@
       "name": "Run Sales Cycle Workflow",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1200, 690]
+      "position": [
+        1200,
+        690
+      ]
     },
     {
       "parameters": {
@@ -171,17 +183,23 @@
       "name": "Run Tender Workflow",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1200, 860]
+      "position": [
+        1200,
+        860
+      ]
     },
     {
       "parameters": {
-        "jsCode": "return [{\n  json: {\n    success: false,\n    error_code: 'INVALID_BENEFIT_TYPE',\n    message: `Unsupported benefit_type: ${$json.benefit_type || 'unknown'}`\n  }\n}];"
+        "jsCode": "return [{\n  json: {\n    followup_required: false,\n    followupQuestions: [],\n    result: {\n      score: 0,\n      summary: `Unsupported benefitSlug: ${$json?.input?.benefitSlug || 'unknown'}`,\n      recommendation: 'Use one of: roi-calculator, pipeline-audit, cpq-maturity-scan, sales-cycle-analyzer, tender-complexity-score.'\n    }\n  }\n}];"
       },
       "id": "f85e5a08-c05d-4300-acc5-370f24fed7df",
       "name": "Unsupported benefit response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1200, 1040]
+      "position": [
+        1200,
+        1040
+      ]
     },
     {
       "parameters": {
@@ -195,7 +213,10 @@
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1500, 560]
+      "position": [
+        1500,
+        560
+      ]
     }
   ],
   "connections": {
@@ -232,14 +253,80 @@
         ],
         [
           {
-            "node": "Route by benefit_type",
+            "node": "Route by benefitSlug",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Route by benefit_type": {
+    "Run ROI Workflow": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Pipeline Workflow": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run CPQ Workflow": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Sales Cycle Workflow": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Tender Workflow": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unsupported benefit response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by benefitSlug": {
       "main": [
         [
           {
@@ -284,13 +371,7 @@
           }
         ]
       ]
-    },
-    "Run ROI Workflow": {"main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]},
-    "Run Pipeline Workflow": {"main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]},
-    "Run CPQ Workflow": {"main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]},
-    "Run Sales Cycle Workflow": {"main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]},
-    "Run Tender Workflow": {"main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]},
-    "Unsupported benefit response": {"main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]}
+    }
   },
   "active": false,
   "settings": {

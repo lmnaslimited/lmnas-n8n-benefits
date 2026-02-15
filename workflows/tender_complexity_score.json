@@ -1,15 +1,91 @@
 {
   "name": "Tender_complexity_score",
   "nodes": [
-    {"parameters": {}, "id": "2f15f29e-13f9-4323-98d5-f1494f72f218", "name": "Execute Workflow Trigger", "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1, "position": [200, 300]},
-    {"parameters": {"jsCode": "const body = $json;\nif (body.benefit_type !== 'Tender_complexity_score') return [{ json: { success: false, error_code: 'INVALID_INPUT', message: 'benefit_type must be Tender_complexity_score' } }];\nconst customizationRatio = Number(body.answers.customization_ratio ?? body.answers.question_1 ?? 0);\nconst numberOfVariants = Number(body.answers.number_of_variants ?? body.answers.question_2 ?? 0);\nconst reviewCycles = Number(body.answers.technical_review_cycles ?? body.answers.question_3 ?? 0);\nconst bidTime = Number(body.answers.bid_submission_time ?? body.answers.question_4 ?? 0);\nif (![customizationRatio, numberOfVariants, reviewCycles, bidTime].every(Number.isFinite)) {\n  return [{ json: { success: false, error_code: 'INVALID_INPUT', message: 'Complexity metrics must be numeric' } }];\n}\nreturn [{ json: { ...body, complexity_inputs: { customizationRatio, numberOfVariants, reviewCycles, bidTime } } }];"}, "id": "f100b43e-a876-42dd-b42d-526af41f8827", "name": "Validate Input", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [450, 300]},
-    {"parameters": {"jsCode": "if ($json.success === false) return [{ json: $json }];\nconst { customizationRatio, numberOfVariants, reviewCycles, bidTime } = $json.complexity_inputs;\nconst complexity_index = Math.max(0, Math.min(100, Math.round((customizationRatio * 0.35) + (numberOfVariants * 1.5) + (reviewCycles * 8) + (bidTime * 0.6))));\nconst risk_level = complexity_index >= 75 ? 'High' : complexity_index >= 40 ? 'Medium' : 'Low';\nreturn [{ json: { ...$json, score: complexity_index, risk_level } }];"}, "id": "be097581-8ff6-44a0-88cc-df2a72ee58fd", "name": "Compute Score", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [700, 300]},
-    {"parameters": {"jsCode": "if ($json.success === false) return [{ json: $json }];\nreturn [{\n  json: {\n    success: true,\n    benefit_type: 'Tender_complexity_score',\n    score: $json.score,\n    summary: `Tender complexity index is ${$json.score} (${ $json.risk_level } risk).`,\n    recommendations: [\n      'Use reusable response modules for recurring compliance sections.',\n      'Run early technical risk triage for high-customization opportunities.',\n      'Set go/no-go thresholds based on complexity and margin.'\n    ],\n    meta: {\n      execution_id: $execution.id,\n      version: '1.0.0',\n      benefit_version: '2026-Q1',\n      complexity_index: $json.score,\n      risk_level: $json.risk_level\n    }\n  }\n}];"}, "id": "a26fbcb8-3ff5-41d7-bff8-4f4a8f2ac31f", "name": "Generate Summary", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [950, 300]}
+    {
+      "parameters": {},
+      "id": "2f15f29e-13f9-4323-98d5-f1494f72f218",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $json;\nconst input = payload.input ?? {};\nif (input.benefitSlug !== 'tender-complexity-score') {\n  return [{ json: {\n    followup_required: false,\n    followupQuestions: [],\n    result: {\n      score: 0,\n      summary: `benefitSlug must be tender-complexity-score`,\n      recommendation: 'Send request to the matching benefit workflow.'\n    }\n  } }];\n}\nconst answers = Array.isArray(input.answers) ? input.answers : [];\nconst answersMap = answers.reduce((acc, item) => {\n  if (item && item.questionId) acc[item.questionId] = item.value;\n  return acc;\n}, {});\nconst stage = input.stage ?? 'standard_started';\nconst followup_required = stage !== 'standard_completed';\nconst followupQuestions = followup_required\n  ? [{\n      id: 'q1',\n      prompt: `Please provide one more detail for ${input.benefitSlug}: current baseline metric and target outcome.`\n    }]\n  : [];\nreturn [{\n  json: {\n    session: payload.session ?? {},\n    input,\n    prompts: payload.prompts ?? {},\n    answersMap,\n    followup_required,\n    followupQuestions\n  }\n}];"
+      },
+      "id": "f100b43e-a876-42dd-b42d-526af41f8827",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "if ($json.followup_required) {\n  return [{ json: { ...$json, score: 0, ragContext: { reason: 'Waiting for follow-up answers' } } }];\n}\nconst answersMap = $json.answersMap ?? {};\nconst customizationRatio = Number(answersMap.customizationRatio ?? 0);\nconst variants = Number(answersMap.variants ?? answersMap.numberOfVariants ?? 0);\nconst reviewCycles = Number(answersMap.reviewCycles ?? 0);\nconst score = Math.max(0, Math.min(100, Math.round((customizationRatio * 0.4) + (variants * 1.5) + (reviewCycles * 9))));\nreturn [{ json: { ...$json, ragContext: { customizationRatio, variants, reviewCycles }, score } }];\n"
+      },
+      "id": "be097581-8ff6-44a0-88cc-df2a72ee58fd",
+      "name": "Mock LLM RAG",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "if ($json.followup_required) {\n  return [{\n    json: {\n      followup_required: true,\n      followupQuestions: $json.followupQuestions,\n      result: {\n        score: 0,\n        summary: 'Additional input is required before final scoring.',\n        recommendation: 'Answer the follow-up question(s) and submit again.'\n      }\n    }\n  }];\n}\nconst systemPrompt = $json.prompts?.system ?? '';\nconst userPrompt = $json.prompts?.user ?? '';\nconst ragHint = (systemPrompt || userPrompt)\n  ? ' Mock LLM RAG grounded this response on provided prompts.'\n  : '';\nreturn [{\n  json: {\n    followup_required: false,\n    followupQuestions: [],\n    result: {\n      score: $json.score,\n      summary: 'Tender complexity is driven by high customization and repeated technical review cycles.' + ragHint,\n      recommendation: 'Pre-build reusable bid modules and apply go/no-go thresholds earlier.'\n    }\n  }\n}];"
+      },
+      "id": "a26fbcb8-3ff5-41d7-bff8-4f4a8f2ac31f",
+      "name": "Format Engine Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        950,
+        300
+      ]
+    }
   ],
   "connections": {
-    "Execute Workflow Trigger": {"main": [[{"node": "Validate Input", "type": "main", "index": 0}]]},
-    "Validate Input": {"main": [[{"node": "Compute Score", "type": "main", "index": 0}]]},
-    "Compute Score": {"main": [[{"node": "Generate Summary", "type": "main", "index": 0}]]}
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Mock LLM RAG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mock LLM RAG": {
+      "main": [
+        [
+          {
+            "node": "Format Engine Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "active": false,
   "settings": {},
